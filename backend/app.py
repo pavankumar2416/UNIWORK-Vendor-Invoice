@@ -862,11 +862,17 @@ def export_csv(kind):
     return Response("\ufeff" + out.getvalue(), mimetype="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename=uniwork-{kind}.csv"})
 
-
 @app.errorhandler(404)
 def not_found(_error):
-    return render_template("error.html", title="Not found", code=404, message="This page does not exist."), 404
+    if request.path == "/favicon.ico":
+        return Response(status=204)
 
+    return render_template(
+        "error.html",
+        title="Not found",
+        code=404,
+        message="This page does not exist."
+    ), 404
 
 @app.errorhandler(500)
 def server_error(_error):
