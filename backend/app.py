@@ -483,7 +483,6 @@ def data_management():
     counts = {table: query_one(f"SELECT COUNT(*) n FROM {table}")["n"] for table in ("users","vendors","products","warehouses","purchase_orders","goods_receipts","vendor_invoices","stock_movements","audit_log")}
     return render_template("data_management.html", title="Data management", counts=counts)
 
-
 @app.route("/")
 def dashboard():
     inv = inventory_rows()
@@ -495,22 +494,37 @@ def dashboard():
     outstanding = query_one("SELECT COALESCE(SUM(total_amount),0) amount FROM vendor_invoices WHERE status='Pending'")["amount"]
     po_open = query_one("SELECT COUNT(*) n FROM purchase_orders WHERE status IN ('Draft','Ordered','Partially Received')")["n"]
     stock_value = sum(float(p["stock"]) * float(p["unit_cost"]) for p in inv)
-    monthly = query_all("""SELECT substr(order_date,1,7) month, COUNT(*) orders,
+    
+    # FIX: Convert rows to standard dictionaries so tojson can read them
+    monthly_rows = query_all("""SELECT substr(order_date,1,7) month, COUNT(*) orders,
                             COALESCE(SUM(pol.quantity*pol.unit_price),0) value
                            FROM purchase_orders po JOIN purchase_order_lines pol ON pol.po_id=po.id
                            WHERE order_date >= date('now','-5 months') GROUP BY substr(order_date,1,7) ORDER BY month""")
-    activity = query_all("SELECT * FROM audit_log ORDER BY id DESC LIMIT 6")
+    monthly = [dict(row) for row in monthly_rows]
+
+    activity_rows = query_all("SELECT * FROM audit_log ORDER BY id DESC LIMIT 6")
+    activity = [dict(row) for row in activity_rows]
+
     return render_template("dashboard.html", title="Operations overview", products=inv, low=low,
                            invoices=invoice_rows[:6], exception_count=exception_count, outstanding=outstanding,
                            po_open=po_open, stock_value=stock_value, monthly=monthly, activity=activity)
 
-
 @app.route("/inventory")
 def inventory():
+    # Use your app's existing helper function to fetch rows
     rows = inventory_rows()
-    return render_template("inventory.html", title="Inventory control", products=rows,
-                           low_count=sum(1 for p in rows if p["stock"] <= p["reorder_level"]))
-
+    
+    # Calculate total stock valuation and low stock count
+    stock_value = sum(float(p["stock"]) * float(p["unit_cost"]) for p in rows)
+    low_count = sum(1 for p in rows if p["stock"] <= p["reorder_level"])
+    
+    return render_template(
+        "inventory.html", 
+        title="Inventory control", 
+        products=rows, 
+        low_count=low_count, 
+        stock_value=stock_value
+    )
 
 @app.route("/vendors")
 def vendors():
